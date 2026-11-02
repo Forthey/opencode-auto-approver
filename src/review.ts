@@ -37,7 +37,15 @@ function parseDecision(text: string): { approved: boolean; reason: string } {
   return { approved: value.approved, reason: value.reason.slice(0, 1000) }
 }
 
-export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<ReviewSettings>, timeoutMs = 60_000) {
+export type ReviewOutcome = {
+  sessionID: string
+  commands: string[]
+  status: 'approved' | 'declined' | 'error'
+  effect: 'allow' | 'ask' | 'deny'
+  reason: string
+}
+
+export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<ReviewSettings>, timeoutMs = 60_000, notify?: (outcome: ReviewOutcome) => Promise<void>) {
   const reviewerSessions = new Set<string>()
   return async (event: PermissionEvent): Promise<void> => {
     if (event.action !== 'shell' || event.effect === 'deny' || reviewerSessions.has(event.sessionID)) return
@@ -47,6 +55,7 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
     let timer: ReturnType<typeof setTimeout> | undefined
     let sessionID: string | undefined
     let cleanupTask: Promise<void> | undefined
+    let status: ReviewOutcome['status'] | undefined
     const cleanup = () => {
       if (!sessionID) return Promise.resolve()
       const id = sessionID
@@ -89,14 +98,21 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
       if (!decision) return
       event.effect = decision.approved ? 'allow' : settings?.fallback ?? 'ask'
       event.message = decision.reason || (decision.approved ? 'Reviewer approved the command' : 'Reviewer did not approve the command')
+      status = decision.approved ? 'approved' : 'declined'
       console.info(`[auto-approver] review ${decision.approved ? 'approved' : 'declined'}; effect=${event.effect}`)
     } catch (error) {
       if (controller.signal.aborted && sessionID) await Promise.race([cleanup(), new Promise<void>(resolve => setTimeout(resolve, 1000))])
       event.effect = settings?.fallback ?? 'ask'
       event.message = `Auto approver could not review command: ${describeError(error)}`
+      status = 'error'
       console.warn(`[auto-approver] review failed; effect=${event.effect}`)
     } finally {
       if (timer) clearTimeout(timer)
+    }
+    if (status && notify) {
+      try {
+        void notify({ sessionID: event.sessionID, commands: [...event.resources], status, effect: event.effect, reason: event.message ?? '' }).catch(() => {})
+      } catch {}
     }
   }
 }

@@ -9,7 +9,7 @@ export default Plugin.define({
     const settings = createSettings(ctx)
     const rpc = await registerRpc(ctx, settings)
     try {
-      const permission = await ctx.permission.hook('evaluate', createReviewHook(ctx as unknown as ReviewContext, settings.get))
+      const permission = await ctx.permission.hook('evaluate', createReviewHook(ctx as unknown as ReviewContext, settings.get, 60_000, outcome => rpc.events.emit('reviewed', outcome)))
       return async () => {
         try { await permission.dispose() } finally { await rpc.dispose() }
       }

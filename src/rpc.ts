@@ -19,7 +19,20 @@ export const ApproverRpc = Rpc.define({
     reset: { input: emptySchema, output: settingsSchema },
     agents: { input: emptySchema, output: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false } } },
   },
-  events: {},
+  events: {
+    reviewed: { schema: {
+      type: 'object',
+      properties: {
+        sessionID: { type: 'string' },
+        commands: { type: 'array', items: { type: 'string' } },
+        status: { enum: ['approved', 'declined', 'error'] },
+        effect: { enum: ['allow', 'ask', 'deny'] },
+        reason: { type: 'string' },
+      },
+      required: ['sessionID', 'commands', 'status', 'effect', 'reason'],
+      additionalProperties: false,
+    } },
+  },
 })
 
 export function registerRpc(ctx: any, settings: SettingsStore) {

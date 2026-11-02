@@ -2,10 +2,18 @@ import { Plugin } from '@opencode/plugin/tui'
 import { ApproverRpc } from './rpc.js'
 import type { Settings } from './settings.js'
 import { describeError } from './errors.ts'
+import type { ReviewOutcome } from './review.js'
 
 export default Plugin.define({
   id: 'auto-approver.tui',
   setup(context) {
+    const unsubscribe = context.client.rpc(ApproverRpc).events.on('reviewed', event => {
+      const outcome = event.data as ReviewOutcome
+      const title = outcome.status === 'approved' ? 'Command approved' : outcome.status === 'declined' ? 'Command not approved' : 'Review failed'
+      const action = outcome.effect === 'ask' ? 'Manual approval required' : outcome.effect === 'deny' ? 'Command denied' : 'Command allowed'
+      const commands = outcome.commands.join(' ; ').replace(/\s+/g, ' ').slice(0, 200)
+      context.ui.toast.show({ title: `Auto approver: ${title}`, message: `${commands}\n${action}: ${outcome.reason}`, variant: outcome.status === 'approved' ? 'success' : outcome.status === 'declined' ? 'warning' : 'error' })
+    })
     context.keymap.layer(() => ({
       mode: 'global',
       commands: [{
@@ -50,5 +58,6 @@ export default Plugin.define({
         },
       }],
     }))
+    return unsubscribe
   },
 })

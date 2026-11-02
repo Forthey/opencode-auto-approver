@@ -38,6 +38,28 @@ test('selected requests use configured agent and pass every resource and session
   assert.match(h.prompts[0], /inspect the repository/)
 })
 
+test('publishes review outcomes without changing the permission when notification fails', async () => {
+  const outcomes: unknown[] = []
+  const ctx = {
+    agent: { async get() { return {} } },
+    session: {
+      async context() { return [] },
+      async create() { return { id: 'review' } },
+      async switchAgent() {},
+      async generate() { return { text: '{"approved":true,"reason":"safe"}' } },
+      async remove() {},
+    },
+  }
+  const hook = createReviewHook(ctx, async () => defaults, 60_000, async outcome => {
+    outcomes.push(outcome)
+    throw new Error('notification unavailable')
+  })
+  const request = event()
+  await hook(request)
+  assert.equal(request.effect, 'allow')
+  assert.deepEqual(outcomes, [{ sessionID: 'original', commands: ['git status'], status: 'approved', effect: 'allow', reason: 'safe' }])
+})
+
 test('disabled, unselected, denied and non-shell requests retain their original decision', async () => {
   for (const [settings, overrides] of [
     [{ enabled: false }, {}], [{ allow: false }, { effect: 'allow' }],
