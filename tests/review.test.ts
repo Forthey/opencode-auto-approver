@@ -38,6 +38,16 @@ test('selected requests use configured agent and pass every resource and session
   assert.match(h.prompts[0], /inspect the repository/)
 })
 
+test('review prompt distinguishes the historical request from the decision task', async () => {
+  const h = harness()
+  await h.hook(event())
+  const prompt = h.prompts[0]
+  assert.match(prompt, /do not answer.*user/i)
+  assert.match(prompt, /do not.*access.*files/i)
+  assert.match(prompt, /insufficient.*approved.*false/i)
+  assert.ok(prompt.lastIndexOf('"approved"') > prompt.indexOf('inspect the repository'))
+})
+
 test('publishes review outcomes without changing the permission when notification fails', async () => {
   const outcomes: unknown[] = []
   const ctx = {
