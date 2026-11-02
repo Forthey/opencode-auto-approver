@@ -1,6 +1,7 @@
 import { Plugin } from '@opencode/plugin/tui'
 import { ApproverRpc } from './rpc.js'
 import type { Settings } from './settings.js'
+import { describeError } from './errors.ts'
 
 export default Plugin.define({
   id: 'auto-approver.tui',
@@ -44,7 +45,7 @@ export default Plugin.define({
               }
             }
           } catch (error) {
-            context.ui.toast.show({ title: 'Auto approver', message: error instanceof Error ? error.message : String(error), variant: 'error' })
+            context.ui.toast.show({ title: 'Auto approver', message: describeError(error), variant: 'error' })
           }
         },
       }],

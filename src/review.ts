@@ -1,3 +1,5 @@
+import { describeError } from './errors.ts'
+
 export type ReviewSettings = {
   enabled: boolean
   agent: string | null
@@ -20,7 +22,7 @@ export type ReviewContext = {
   agent: { get(input: { agentID: string }): Promise<unknown> }
   session: {
     context(input: { sessionID: string }): Promise<unknown>
-    create(input: { title: string; permissions: { action: string; resource: string; effect: 'deny' }[] }): Promise<{ id: string }>
+    create(input: { title: string; model?: { providerID: string; model: string; variant?: string }; permissions: { action: string; resource: string; effect: 'deny' }[] }): Promise<{ id: string }>
     switchAgent(input: { sessionID: string; agent: string }): Promise<void>
     generate(input: { sessionID: string; prompt: string }, options?: { signal: AbortSignal }): Promise<{ text: string }>
     remove(input: { sessionID: string }): Promise<void>
@@ -56,11 +58,13 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
       if (controller.signal.aborted) throw new Error('Reviewer timed out')
       if (!settings.enabled || !settings[initialEffect]) return undefined
       try {
-        if (!settings.agent || !await ctx.agent.get({ agentID: settings.agent })) throw new Error('Reviewer agent is unavailable')
+        if (!settings.agent) throw new Error('Reviewer agent is unavailable')
+        const result = await ctx.agent.get({ agentID: settings.agent }) as { data?: { model?: { providerID: string; model: string; variant?: string } } } | undefined
+        if (!result) throw new Error('Reviewer agent is unavailable')
         if (controller.signal.aborted) throw new Error('Reviewer timed out')
         const context = await ctx.session.context({ sessionID: event.sessionID })
         if (controller.signal.aborted) throw new Error('Reviewer timed out')
-        const session = await ctx.session.create({ title: 'Auto approver review', permissions: [{ action: '*', resource: '*', effect: 'deny' }] })
+        const session = await ctx.session.create({ title: 'Auto approver review', model: result.data?.model, permissions: [{ action: '*', resource: '*', effect: 'deny' }] })
         sessionID = session.id
         reviewerSessions.add(sessionID)
         if (controller.signal.aborted) throw new Error('Reviewer timed out')
@@ -71,8 +75,8 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
           'Respond with only a JSON object containing boolean "approved" and string "reason". Approve only when confident.',
           JSON.stringify({ commands: event.resources, metadata: event.metadata, session: context }),
         ].join('\n')
-        const result = await ctx.session.generate({ sessionID, prompt }, { signal: controller.signal })
-        return parseDecision(result.text)
+        const generated = await ctx.session.generate({ sessionID, prompt }, { signal: controller.signal })
+        return parseDecision(generated.text)
       } finally {
         await cleanup()
       }
@@ -85,10 +89,12 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
       if (!decision) return
       event.effect = decision.approved ? 'allow' : settings?.fallback ?? 'ask'
       event.message = decision.reason || (decision.approved ? 'Reviewer approved the command' : 'Reviewer did not approve the command')
+      console.info(`[auto-approver] review ${decision.approved ? 'approved' : 'declined'}; effect=${event.effect}`)
     } catch (error) {
       if (controller.signal.aborted && sessionID) await Promise.race([cleanup(), new Promise<void>(resolve => setTimeout(resolve, 1000))])
       event.effect = settings?.fallback ?? 'ask'
-      event.message = `Auto approver could not review command: ${error instanceof Error ? error.message : 'unknown error'}`
+      event.message = `Auto approver could not review command: ${describeError(error)}`
+      console.warn(`[auto-approver] review failed; effect=${event.effect}`)
     } finally {
       if (timer) clearTimeout(timer)
     }

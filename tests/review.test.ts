@@ -118,3 +118,35 @@ test('timeout applies fallback and cleans up reviewer session', async () => {
   assert.equal(request.effect, 'deny')
   assert.equal(removed, true)
 })
+
+test('review session uses the model configured on the selected agent', async () => {
+  let created: any
+  const model = { providerID: 'protei', model: 'review-model' }
+  const ctx = {
+    agent: { async get() { return { data: { id: 'reviewer', model } } } },
+    session: {
+      async context() { return [] },
+      async create(input: unknown) { created = input; return { id: 'review' } },
+      async switchAgent() {},
+      async generate() { return { text: '{"approved":true,"reason":"safe"}' } },
+      async remove() {},
+    },
+  }
+  const request = event()
+  await createReviewHook(ctx, async () => defaults)(request)
+  assert.deepEqual(created.model, model)
+  assert.equal(request.effect, 'allow')
+})
+
+test('reports the message from a structured OpenCode error', async () => {
+  const ctx = {
+    agent: { async get() { throw { type: 'agent.not_found', message: 'Reviewer agent not found' } } },
+    session: {
+      async context() { return [] }, async create() { return { id: 'review' } },
+      async switchAgent() {}, async generate() { return { text: '' } }, async remove() {},
+    },
+  }
+  const request = event()
+  await createReviewHook(ctx, async () => defaults)(request)
+  assert.match(request.message ?? '', /agent.not_found.*Reviewer agent not found/)
+})
