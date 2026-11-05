@@ -182,3 +182,18 @@ test('reports the message from a structured OpenCode error', async () => {
   await createReviewHook(ctx, async () => defaults)(request)
   assert.match(request.message ?? '', /agent.not_found.*Reviewer agent not found/)
 })
+
+test('configured timeout applies to reviewer execution', async () => {
+  const ctx = {
+    agent: { async get() { return {} } },
+    session: {
+      async context() { return [] }, async create() { return { id: 'review' } },
+      async switchAgent() {}, async generate() { await new Promise(resolve => setTimeout(resolve, 40)); return { text: '{\"approved\":true,\"reason\":\"safe\"}' } },
+      async remove() {},
+    },
+  }
+  const request = event()
+  await createReviewHook(ctx, async () => ({ ...defaults, timeoutMs: 5, fallback: 'deny' }))(request)
+  assert.equal(request.effect, 'deny')
+  assert.match(request.message ?? '', /timed out/)
+})

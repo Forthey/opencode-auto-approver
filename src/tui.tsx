@@ -33,6 +33,7 @@ export default Plugin.define({
                   { title: `Reviewer: ${settings.agent ?? 'not selected'}`, value: 'agent' },
                   { title: `Review allow: ${settings.allow ? 'on' : 'off'}`, value: 'allow' },
                   { title: `Review ask: ${settings.ask ? 'on' : 'off'}`, value: 'ask' },
+                  { title: `Timeout: ${settings.timeoutMs} ms`, value: 'timeoutMs' },
                   { title: `On rejection or error: ${settings.fallback}`, value: 'fallback' },
                   { title: 'Reset to configuration', value: 'reset' },
                 ],
@@ -45,6 +46,14 @@ export default Plugin.define({
               } else if (selected === 'reset') {
                 const confirmed = await context.ui.dialog.confirm({ title: 'Reset settings', message: 'Restore the values from the OpenCode configuration?' })
                 if (confirmed) await rpc.reset({})
+              } else if (selected === 'timeoutMs') {
+                const value = await context.ui.dialog.prompt({ title: 'Review timeout in milliseconds', value: String(settings.timeoutMs) })
+                if (value !== undefined) {
+                  const timeoutMs = Number(value)
+                  if (!/^\d+$/.test(value) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) {
+                    context.ui.toast.show({ title: 'Auto approver', message: 'Enter an integer between 1 and 2147483647 milliseconds', variant: 'error' })
+                  } else await rpc.save({ timeoutMs })
+                }
               } else if (selected === 'fallback') {
                 const fallback = await context.ui.dialog.select({ title: 'On rejection or error', options: [{ title: 'Ask a person', value: 'ask' }, { title: 'Deny', value: 'deny' }] })
                 if (fallback) await rpc.save({ fallback })

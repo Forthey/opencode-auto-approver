@@ -7,8 +7,9 @@ const properties = {
   allow: { type: 'boolean' },
   ask: { type: 'boolean' },
   fallback: { enum: ['ask', 'deny'] },
+  timeoutMs: { type: 'integer', minimum: 1, maximum: 2_147_483_647 },
 } as const
-const settingsSchema = { type: 'object', properties, required: ['enabled', 'agent', 'allow', 'ask', 'fallback'], additionalProperties: false } as const
+const settingsSchema = { type: 'object', properties, required: ['enabled', 'agent', 'allow', 'ask', 'fallback', 'timeoutMs'], additionalProperties: false } as const
 const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
 
 export const ApproverRpc = Rpc.define({

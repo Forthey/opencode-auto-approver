@@ -6,6 +6,7 @@ export type ReviewSettings = {
   allow: boolean
   ask: boolean
   fallback: 'ask' | 'deny'
+  timeoutMs?: number
 }
 
 export type PermissionEvent = {
@@ -53,6 +54,12 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
     const controller = new AbortController()
     let settings: ReviewSettings | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
+    let rejectTimeout: (error: Error) => void = () => {}
+    const started = Date.now()
+    const scheduleTimeout = (duration: number) => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { controller.abort(); rejectTimeout(new Error('Reviewer timed out')) }, Math.max(0, duration - (Date.now() - started)))
+    }
     let sessionID: string | undefined
     let cleanupTask: Promise<void> | undefined
     let status: ReviewOutcome['status'] | undefined
@@ -65,6 +72,7 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
     const work = async (): Promise<{ approved: boolean; reason: string } | undefined> => {
       settings = await getSettings()
       if (controller.signal.aborted) throw new Error('Reviewer timed out')
+      scheduleTimeout(settings.timeoutMs ?? timeoutMs)
       if (!settings.enabled || !settings[initialEffect]) return undefined
       try {
         if (!settings.agent) throw new Error('Reviewer agent is unavailable')
@@ -95,10 +103,8 @@ export function createReviewHook(ctx: ReviewContext, getSettings: () => Promise<
       }
     }
     try {
-      const decision = await Promise.race([
-        work(),
-        new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Reviewer timed out')) }, timeoutMs) }),
-      ])
+      const timeout = new Promise<never>((_, reject) => { rejectTimeout = reject; scheduleTimeout(timeoutMs) })
+      const decision = await Promise.race([work(), timeout])
       if (!decision) return
       event.effect = decision.approved ? 'allow' : settings?.fallback ?? 'ask'
       event.message = decision.reason || (decision.approved ? 'Reviewer approved the command' : 'Reviewer did not approve the command')

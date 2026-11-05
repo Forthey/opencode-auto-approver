@@ -4,6 +4,7 @@ export interface Settings {
   allow: boolean
   ask: boolean
   fallback: 'ask' | 'deny'
+  timeoutMs: number
 }
 
 type Overrides = Partial<Settings>
@@ -15,7 +16,7 @@ interface Storage {
 }
 
 const key = 'settings'
-const defaults: Settings = { enabled: false, agent: null, allow: false, ask: true, fallback: 'ask' }
+const defaults: Settings = { enabled: false, agent: null, allow: false, ask: true, fallback: 'ask', timeoutMs: 60_000 }
 
 function validate(value: unknown): Overrides {
   if (value === undefined) return {}
@@ -36,7 +37,11 @@ function validate(value: unknown): Overrides {
     if (input.fallback !== 'ask' && input.fallback !== 'deny') throw new Error('Invalid setting: fallback')
     result.fallback = input.fallback
   }
-  for (const name of Object.keys(input)) if (!['enabled', 'agent', 'allow', 'ask', 'fallback'].includes(name)) throw new Error(`Unknown setting: ${name}`)
+  if ('timeoutMs' in input) {
+    if (typeof input.timeoutMs !== 'number' || !Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 2_147_483_647) throw new Error('Invalid setting: timeoutMs')
+    result.timeoutMs = input.timeoutMs
+  }
+  for (const name of Object.keys(input)) if (!['enabled', 'agent', 'allow', 'ask', 'fallback', 'timeoutMs'].includes(name)) throw new Error(`Unknown setting: ${name}`)
   return result
 }
 
